@@ -1,7 +1,22 @@
 import React, { useState, useEffect } from "react";
 import "./App.css";
 import "rbx/index.css";
+import firebase from "firebase/app";
+import "firebase/database";
 import { Button, Container, Title } from "rbx";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCwxox0RAzZC-koV6-1DgHBSbhO4nZU6TY",
+  authDomain: "quick-react-1ed4b.firebaseapp.com",
+  databaseURL: "https://quick-react-1ed4b.firebaseio.com",
+  projectId: "quick-react-1ed4b",
+  storageBucket: "quick-react-1ed4b.appspot.com",
+  messagingSenderId: "408600554808",
+  appId: "1:408600554808:web:83ea53e9da72db7d0425cd"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database().ref();
 
 const terms = { F: "Fall", W: "Winter", S: "Spring" };
 const Banner = ({ title }) => <Title>{title || "[loading...]"}</Title>;
@@ -76,13 +91,29 @@ const addCourseTimes = course => ({
 
 const addScheduleTimes = schedule => ({
   title: schedule.title,
-  courses: schedule.courses.map(addCourseTimes)
+  courses: Object.values(schedule.courses).map(addCourseTimes)
 });
+
+const saveCourse = (course, meets) => {
+  db.child("courses")
+    .child(course.id)
+    .update({ meets })
+    .catch(error => alert(error));
+};
+
+const moveCourse = course => {
+  const meets = prompt("Enter new meeting data, in this format:", course.meets);
+  if (!meets) return;
+  const { days } = timeParts(meets);
+  if (days) saveCourse(course, meets);
+  else moveCourse(course);
+};
 
 const Course = ({ course, state }) => (
   <Button
     color={buttonColor(state.selected.includes(course))}
     onClick={() => state.toggle(course)}
+    onDoubleClick={() => moveCourse(course)}
     disabled={hasConflict(course, state.selected)}
   >
     {getCourseTerm(course)} CS {getCourseNumber(course)}: {course.title}
@@ -113,17 +144,15 @@ const CourseList = ({ courses }) => {
 const App = () => {
   // initializes trackable state as schedule var, and function to update the state
   const [schedule, setSchedule] = useState({ title: "", courses: [] });
-  const url = "https://courses.cs.northwestern.edu/394/data/cs-courses.php";
   //useEffect usually runs on every render, but w/empty list, only runs on mount
   useEffect(() => {
-    const fetchSchedule = async () => {
-      const response = await fetch(url);
-      if (!response.ok) throw response;
-      const json = await response.json();
-      setSchedule(addScheduleTimes(json));
+    const handleData = snap => {
+      if (snap.val()) setSchedule(addScheduleTimes(snap.val()));
     };
-    fetchSchedule();
+    db.on("value", handleData, error => alert(error)); // checks for db changes periodically
+    return () => db.off("value", handleData); // cb runs on unmount
   }, []);
+
   return (
     <Container>
       <Banner title={schedule.title} />
