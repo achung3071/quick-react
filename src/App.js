@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from "react";
 import "./App.css";
-import "rbx/index.css";
 import firebase from "firebase/app";
 import "firebase/database";
-import { Button, Container, Title } from "rbx";
+import "firebase/auth";
+import StyledFirebaseAuth from "react-firebaseui/StyledFirebaseAuth";
+import "rbx/index.css";
+import { Button, Container, Title, Message } from "rbx";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCwxox0RAzZC-koV6-1DgHBSbhO4nZU6TY",
@@ -15,12 +17,41 @@ const firebaseConfig = {
   appId: "1:408600554808:web:83ea53e9da72db7d0425cd"
 };
 
+const uiConfig = {
+  signInFlow: "popup",
+  signInOptions: [firebase.auth.GoogleAuthProvider.PROVIDER_ID],
+  callbacks: {
+    signInSuccessWithAuthResult: () => false
+  }
+};
+
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database().ref();
 
 const terms = { F: "Fall", W: "Winter", S: "Spring" };
-const Banner = ({ title }) => <Title>{title || "[loading...]"}</Title>;
 const buttonColor = selected => (selected ? "success" : null);
+
+const SignIn = () => (
+  <StyledFirebaseAuth uiConfig={uiConfig} firebaseAuth={firebase.auth()} />
+);
+
+const Welcome = ({ user }) => (
+  <Message color="info">
+    <Message.Header>
+      Welcome, {user.displayName}
+      <Button primary onClick={() => firebase.auth().signOut()}>
+        Log out
+      </Button>
+    </Message.Header>
+  </Message>
+);
+
+const Banner = ({ user, title }) => (
+  <React.Fragment>
+    {user ? <Welcome user={user} /> : <SignIn />}
+    <Title>{title || "[loading...]"}</Title>
+  </React.Fragment>
+);
 
 const TermSelector = ({ state }) => (
   <Button.Group hasAddons>
@@ -109,18 +140,18 @@ const moveCourse = course => {
   else moveCourse(course);
 };
 
-const Course = ({ course, state }) => (
+const Course = ({ course, state, user }) => (
   <Button
     color={buttonColor(state.selected.includes(course))}
     onClick={() => state.toggle(course)}
-    onDoubleClick={() => moveCourse(course)}
+    onDoubleClick={user ? () => moveCourse(course) : null}
     disabled={hasConflict(course, state.selected)}
   >
     {getCourseTerm(course)} CS {getCourseNumber(course)}: {course.title}
   </Button>
 );
 
-const CourseList = ({ courses }) => {
+const CourseList = ({ user, courses }) => {
   const [term, setTerm] = useState("Fall");
   const [selected, toggle] = useSelection();
   const termCourses = courses.filter(course => term === getCourseTerm(course));
@@ -134,6 +165,7 @@ const CourseList = ({ courses }) => {
             key={course.id}
             course={course}
             state={{ selected, toggle }}
+            user={user}
           />
         ))}
       </Button.Group>
@@ -144,6 +176,8 @@ const CourseList = ({ courses }) => {
 const App = () => {
   // initializes trackable state as schedule var, and function to update the state
   const [schedule, setSchedule] = useState({ title: "", courses: [] });
+  const [user, setUser] = useState(null);
+
   //useEffect usually runs on every render, but w/empty list, only runs on mount
   useEffect(() => {
     const handleData = snap => {
@@ -153,10 +187,14 @@ const App = () => {
     return () => db.off("value", handleData); // cb runs on unmount
   }, []);
 
+  useEffect(() => {
+    firebase.auth().onAuthStateChanged(setUser); // sets user as authenticated user
+  }, []);
+
   return (
     <Container>
-      <Banner title={schedule.title} />
-      <CourseList courses={schedule.courses} />
+      <Banner title={schedule.title} user={user} />
+      <CourseList courses={schedule.courses} user={user} />
     </Container>
   );
 };
